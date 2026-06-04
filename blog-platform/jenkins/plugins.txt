@@ -1,0 +1,37 @@
+# jenkins/plugins.txt
+# Required Jenkins plugins for the Blog Platform CI/CD pipeline.
+# Install via: Jenkins → Manage Jenkins → Plugin Manager → Available
+# Or use the Jenkins CLI:
+#   java -jar jenkins-cli.jar -s http://localhost:8080/ install-plugin $(cat plugins.txt | tr '\n' ' ')
+
+# Core pipeline support
+workflow-aggregator        # Pipeline (all pipeline steps)
+pipeline-stage-view        # Pipeline Stage View UI
+pipeline-graph-analysis    # Pipeline Graph Analysis
+
+# Source control
+git                        # Git integration
+github                     # GitHub integration
+github-branch-source       # Multibranch pipeline support
+gitlab-plugin              # GitLab integration (optional)
+
+# Docker
+docker-workflow            # Docker Pipeline steps (docker.build, docker.push)
+docker-plugin              # Docker as build agent
+docker-commons             # Shared Docker functionality
+
+# Credentials & security
+credentials                # Credentials management
+credentials-binding        # Bind credentials to environment variables
+ssh-agent                  # SSH agent for SSH key-based auth
+plain-credentials          # Username/password credential type
+
+# Notifications
+email-ext                  # Extended email notifications
+slack                      # Slack notifications (optional)
+
+# Utilities
+timestamper                # Add timestamps to build output
+ansicolor                  # ANSI color in console output
+build-timeout              # Timeout builds that run too long
+ws-cleanup                 # Clean workspace before/after builds

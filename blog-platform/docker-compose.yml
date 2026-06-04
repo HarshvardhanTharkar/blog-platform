@@ -1,0 +1,102 @@
+version: "3.9"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Docker Compose — Blog Platform
+#
+# Services:
+#   mongodb  — MongoDB 7 with named volume for persistent data
+#   backend  — Node.js/Express API (depends on mongodb being healthy)
+#   frontend — React app served by Nginx (proxies /api to backend)
+#
+# Networks:
+#   app-network — isolated bridge network; services communicate by name
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── MongoDB ────────────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7.0
+    container_name: blog_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme}
+      MONGO_INITDB_DATABASE: blogplatform
+    volumes:
+      - mongodb_data:/data/db          # Persist data across container restarts
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── Backend ────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: blog_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      # Uses MongoDB service name as hostname (Docker internal DNS)
+      MONGO_URI: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-changeme}@mongodb:27017/blogplatform?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:-change_this_secret_in_production}
+      JWT_EXPIRE: ${JWT_EXPIRE:-7d}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:3000}
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX: 100
+    volumes:
+      - backend_logs:/app/logs          # Persist logs outside container
+    depends_on:
+      mongodb:
+        condition: service_healthy      # Wait for MongoDB health check to pass
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Frontend ───────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_API_URL: /api        # Build-time env var baked into React bundle
+    container_name: blog_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"                        # Expose Nginx on host port 80
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# ── Volumes ────────────────────────────────────────────────────────────────
+volumes:
+  mongodb_data:
+    driver: local
+  backend_logs:
+    driver: local
+
+# ── Networks ───────────────────────────────────────────────────────────────
+networks:
+  app-network:
+    driver: bridge
+    name: blog_network
