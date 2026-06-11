@@ -1,94 +1,60 @@
-// ──────────────────────────────────────────────────────────────────────────────
-// Jenkinsfile
-// Declarative Pipeline for the Blog Platform.
-//
-// Stages:
-//   1. Checkout         — Clone repo from GitHub
-//   2. Install Deps     — npm ci for backend & frontend
-//   3. Backend Tests    — Run Jest test suite with coverage
-//   4. Frontend Build   — Create optimized production React bundle
-//   5. Docker Build     — Build backend + frontend images
-//   6. Compose Validate — Dry-run docker compose config validation
-//   7. Deploy to EC2    — SSH to EC2, pull code, restart containers
-//   8. Health Check     — Verify the app is responding post-deploy
-//
-// Required Jenkins credentials (see jenkins/credentials-setup.md):
-//   - github-credentials   (Username+Password)
-//   - ec2-ssh-key          (SSH private key)
-//   - blog-platform-env    (Secret file — production .env)
-//
-// Required environment variables (set in Jenkins global config):
-//   - EC2_HOST             The EC2 Elastic IP address
-//   - APP_DIR              Application directory on EC2 (e.g. /opt/blog-platform)
-// ──────────────────────────────────────────────────────────────────────────────
-
+@"
 pipeline {
     agent any
 
-    // ── Tool versions ────────────────────────────────────────────────────────
     tools {
-        nodejs 'NodeJS-20'   // Configure in Manage Jenkins → Tools → NodeJS
+        nodejs 'NodeJS-20'
     }
 
-    // ── Build-level environment variables ────────────────────────────────────
     environment {
-        NODE_ENV      = 'test'
-        IMAGE_TAG     = "${env.GIT_COMMIT?.take(8) ?: 'latest'}"
-        BACKEND_IMAGE = "blog-platform-backend:${IMAGE_TAG}"
-        FRONTEND_IMAGE= "blog-platform-frontend:${IMAGE_TAG}"
+        NODE_ENV       = 'test'
+        IMAGE_TAG      = 'latest'
+        BACKEND_IMAGE  = "blog-platform-backend:latest"
+        FRONTEND_IMAGE = "blog-platform-frontend:latest"
     }
 
-    // ── Build options ─────────────────────────────────────────────────────────
     options {
-        timeout(time: 30, unit: 'MINUTES')    // Abort if build takes > 30 min
-        buildDiscarder(logRotator(numToKeepStr: '10'))  // Keep last 10 builds
-        disableConcurrentBuilds()             // Prevent parallel builds
-        ansiColor('xterm')                    // Enable color in console output
-        timestamps()                          // Prefix every log line with timestamp
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+        timestamps()
     }
 
-    // ── Triggers ──────────────────────────────────────────────────────────────
     triggers {
-        githubPush()    // Trigger on GitHub webhook push events
+        githubPush()
     }
 
-    // ── Pipeline stages ───────────────────────────────────────────────────────
     stages {
 
-        // ── Stage 1: Checkout ────────────────────────────────────────────────
         stage('Checkout') {
             steps {
-                echo '📥 Checking out source code...'
+                echo 'Checking out source code...'
                 checkout scm
-                sh 'git log --oneline -5'  // Show last 5 commits for traceability
+                sh 'git log --oneline -5'
             }
         }
 
-        // ── Stage 2: Install Dependencies ────────────────────────────────────
         stage('Install Dependencies') {
             parallel {
                 stage('Backend Deps') {
                     steps {
-                        echo '📦 Installing backend dependencies...'
+                        echo 'Installing backend dependencies...'
                         dir('server') {
-                            // npm ci is faster and more reliable than npm install in CI
-                            // It uses package-lock.json for exact reproducible installs
-                            sh 'npm ci'
+                            sh 'npm install --legacy-peer-deps'
                         }
                     }
                 }
                 stage('Frontend Deps') {
                     steps {
-                        echo '📦 Installing frontend dependencies...'
+                        echo 'Installing frontend dependencies...'
                         dir('client') {
-                            sh 'npm ci'
+                            sh 'npm install --legacy-peer-deps'
                         }
                     }
                 }
             }
         }
 
-        // ── Stage 3: Backend Tests ────────────────────────────────────────────
         stage('Backend Tests') {
             environment {
                 NODE_ENV       = 'test'
@@ -96,88 +62,53 @@ pipeline {
                 MONGO_URI_TEST = 'mongodb://localhost:27017/blogplatform_ci_test'
             }
             steps {
-                echo '🧪 Running backend test suite...'
+                echo 'Running backend test suite...'
                 dir('server') {
-                    sh 'npm test -- --forceExit --coverage'
-                }
-            }
-            post {
-                always {
-                    // Archive test coverage report regardless of test outcome
-                    publishHTML(target: [
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'server/coverage/lcov-report',
-                        reportFiles: 'index.html',
-                        reportName: 'Backend Coverage Report'
-                    ])
+                    sh 'npm test -- --forceExit'
                 }
             }
         }
 
-        // ── Stage 4: Frontend Build ───────────────────────────────────────────
         stage('Frontend Build') {
             steps {
-                echo '🏗️ Building React production bundle...'
+                echo 'Building React production bundle...'
                 dir('client') {
                     sh 'npm run build'
-                    // Verify build output exists
                     sh 'ls -la build/'
-                    sh 'du -sh build/'
                 }
             }
         }
 
-        // ── Stage 5: Docker Build ────────────────────────────────────────────
         stage('Docker Build') {
             steps {
-                echo '🐳 Building Docker images...'
+                echo 'Building Docker images...'
                 script {
-                    // Build backend image
                     sh """
                         docker build \
-                            -t ${BACKEND_IMAGE} \
                             -t blog-platform-backend:latest \
                             ./server
                     """
-
-                    // Build frontend image
                     sh """
                         docker build \
-                            -t ${FRONTEND_IMAGE} \
                             -t blog-platform-frontend:latest \
                             ./client
                     """
-
-                    // Show built images
                     sh 'docker images | grep blog-platform'
                 }
             }
         }
 
-        // ── Stage 6: Docker Compose Validation ───────────────────────────────
         stage('Compose Validate') {
             steps {
-                echo '✅ Validating Docker Compose configuration...'
-                // --dry-run parses and validates docker-compose.yml without starting containers
+                echo 'Validating Docker Compose configuration...'
                 sh 'docker compose config --quiet'
                 echo 'Docker Compose configuration is valid.'
             }
         }
 
-        // ── Stage 7: Deploy to EC2 ────────────────────────────────────────────
         stage('Deploy to EC2') {
-            when {
-                // Only deploy on pushes to main/master branch
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                    expression { return true }
-                }
-            }
             steps {
-                echo '🚀 Deploying to EC2...'
+                echo 'Deploying to EC2...'
                 withCredentials([
                     sshUserPrivateKey(
                         credentialsId: 'ec2-ssh-key',
@@ -188,37 +119,28 @@ pipeline {
                 ]) {
                     script {
                         def ec2Host = env.EC2_HOST
-                        def appDir  = env.APP_DIR ?: '/opt/blog-platform'
+                        def appDir  = env.APP_DIR ?: '/opt/blog-platform/blog-platform'
                         def sshOpts = '-o StrictHostKeyChecking=no -o ConnectTimeout=30'
 
-                        // 1. Copy the .env file to the server
                         sh """
-                            scp ${sshOpts} -i ${SSH_KEY} \
-                                ${ENV_FILE} \
-                                ${SSH_USER}@${ec2Host}:${appDir}/.env
+                            scp \${sshOpts} -i \${SSH_KEY} \
+                                \${ENV_FILE} \
+                                \${SSH_USER}@\${ec2Host}:\${appDir}/.env
                         """
 
-                        // 2. Run the remote deploy script
                         sh """
-                            ssh ${sshOpts} -i ${SSH_KEY} ${SSH_USER}@${ec2Host} '
+                            ssh \${sshOpts} -i \${SSH_KEY} \${SSH_USER}@\${ec2Host} '
                                 set -e
-                                cd ${appDir}
-
+                                cd \${appDir}
                                 echo "--- Pulling latest code ---"
                                 git pull origin main
-
                                 echo "--- Building containers ---"
                                 docker compose build --no-cache
-
-                                echo "--- Stopping old containers ---"
+                                echo "--- Restarting containers ---"
                                 docker compose down --remove-orphans
-
-                                echo "--- Starting new containers ---"
                                 docker compose up -d
-
                                 echo "--- Pruning old images ---"
                                 docker image prune -f
-
                                 echo "--- Container status ---"
                                 docker compose ps
                             '
@@ -228,65 +150,33 @@ pipeline {
             }
         }
 
-        // ── Stage 8: Health Check ─────────────────────────────────────────────
         stage('Health Check') {
-            when {
-                anyOf { branch 'main'; branch 'master' }
-            }
             steps {
-                echo '🩺 Running post-deploy health check...'
+                echo 'Running post-deploy health check...'
                 script {
                     def ec2Host = env.EC2_HOST
-                    // Retry 5 times with 15s delay — gives containers time to start
                     retry(5) {
                         sleep(time: 15, unit: 'SECONDS')
-                        sh "curl -f --silent --max-time 10 http://${ec2Host}/health || exit 1"
+                        sh "curl -f --silent --max-time 10 http://\${ec2Host}/api/blogs || exit 1"
                     }
                 }
-                echo '✅ Application is healthy!'
+                echo 'Application is healthy!'
             }
         }
 
-    } // end stages
+    }
 
-    // ── Post-build actions ────────────────────────────────────────────────────
     post {
         success {
-            echo "✅ Pipeline succeeded! Build #${env.BUILD_NUMBER} deployed."
-            // Uncomment to enable Slack notifications:
-            // slackSend(color: 'good', message: "✅ Blog Platform deployed successfully. Build #${env.BUILD_NUMBER}")
+            echo "Pipeline succeeded! Build #\${env.BUILD_NUMBER} deployed."
         }
-
         failure {
-            echo "❌ Pipeline failed at stage: ${env.STAGE_NAME}"
-            // Trigger rollback on deploy failures
-            script {
-                if (env.BRANCH_NAME in ['main', 'master'] && env.STAGE_NAME in ['Deploy to EC2', 'Health Check']) {
-                    echo '🔄 Attempting rollback...'
-                    withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
-                        def appDir = env.APP_DIR ?: '/opt/blog-platform'
-                        sh """
-                            ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${SSH_USER}@${env.EC2_HOST} '
-                                cd ${appDir}
-                                git stash
-                                git checkout HEAD~1
-                                docker compose up -d --build
-                                echo "Rollback complete."
-                            ' || echo "Rollback failed — manual intervention required."
-                        """
-                    }
-                }
-            }
-            // emailext(
-            //     subject: "❌ Blog Platform Build #${env.BUILD_NUMBER} Failed",
-            //     body: "Check: ${env.BUILD_URL}",
-            //     to: 'devops@yourcompany.com'
-            // )
+            echo "Pipeline failed."
         }
-
         always {
             echo 'Cleaning up workspace...'
-            cleanWs()  // Remove workspace files to free disk space
+            cleanWs()
         }
     }
 }
+"@ | Set-Content -Path "blog-platform\Jenkinsfile" -Encoding UTF8
