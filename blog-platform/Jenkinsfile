@@ -173,6 +173,7 @@ pipeline {
                 anyOf {
                     branch 'main'
                     branch 'master'
+                    expression { return true }
                 }
             }
             steps {

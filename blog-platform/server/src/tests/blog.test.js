@@ -1,11 +1,12 @@
 const request = require('supertest');
 const mongoose = require('mongoose');
+process.env.MONGO_URI_TEST = 'mongodb://localhost:27017/blogplatform_test_blog';
 const app = require('../app');
 const User = require('../models/User');
 const Blog = require('../models/Blog');
 
 process.env.NODE_ENV = 'test';
-process.env.JWT_SECRET = 'test_jwt_secret_key_for_testing';
+
 
 let token;
 let userId;
@@ -109,7 +110,7 @@ describe('Blog API', () => {
           tags: ['updated'],
         });
       expect(res.statusCode).toBe(200);
-      expect(res.body.data.blog.title).toBe('Updated Blog Title Here');
+expect(res.body.data.blog.title).toBe('Updated Blog Title Here');
     });
 
     it('should reject update from non-author', async () => {

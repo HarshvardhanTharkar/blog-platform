@@ -28,13 +28,14 @@
     "nodemon": "^3.0.2",
     "supertest": "^6.3.3"
   },
-  "jest": {
-    "testEnvironment": "node",
-    "testPathPattern": "src/tests",
-    "coverageDirectory": "coverage",
-    "collectCoverageFrom": [
-      "src/**/*.js",
-      "!src/tests/**"
-    ]
-  }
+"jest": {
+  "testEnvironment": "node",
+  "testMatch": ["**/src/tests/**/*.test.js"],
+  "coverageDirectory": "coverage",
+  "collectCoverageFrom": [
+    "src/**/*.js",
+    "!src/tests/**"
+  ],
+  "setupFiles": ["dotenv/config"]
+}
 }
