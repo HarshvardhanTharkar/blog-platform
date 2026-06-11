@@ -1,5 +1,4 @@
-@"
-pipeline {
+﻿pipeline {
     agent any
 
     tools {
@@ -179,4 +178,3 @@ pipeline {
         }
     }
 }
-"@ | Set-Content -Path "blog-platform\Jenkinsfile" -Encoding UTF8
