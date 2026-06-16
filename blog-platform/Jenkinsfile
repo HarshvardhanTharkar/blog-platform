@@ -7,7 +7,6 @@ pipeline {
 
     environment {
         NODE_ENV       = 'test'
-        IMAGE_TAG      = 'latest'
         BACKEND_IMAGE  = "blog-platform-backend:latest"
         FRONTEND_IMAGE = "blog-platform-frontend:latest"
     }
@@ -38,7 +37,7 @@ pipeline {
                 stage('Backend Deps') {
                     steps {
                         echo 'Installing backend dependencies...'
-                        dir('server') {
+                        dir('blog-platform/server') {
                             sh 'npm install --legacy-peer-deps'
                         }
                     }
@@ -46,7 +45,7 @@ pipeline {
                 stage('Frontend Deps') {
                     steps {
                         echo 'Installing frontend dependencies...'
-                        dir('client') {
+                        dir('blog-platform/client') {
                             sh 'npm install --legacy-peer-deps'
                         }
                     }
@@ -62,7 +61,7 @@ pipeline {
             }
             steps {
                 echo 'Running backend test suite...'
-                dir('server') {
+                dir('blog-platform/server') {
                     sh 'npm test -- --forceExit'
                 }
             }
@@ -71,7 +70,7 @@ pipeline {
         stage('Frontend Build') {
             steps {
                 echo 'Building React production bundle...'
-                dir('client') {
+                dir('blog-platform/client') {
                     sh 'npm run build'
                     sh 'ls -la build/'
                 }
@@ -82,16 +81,8 @@ pipeline {
             steps {
                 echo 'Building Docker images...'
                 script {
-                    sh """
-                        docker build \
-                            -t blog-platform-backend:latest \
-                            ./server
-                    """
-                    sh """
-                        docker build \
-                            -t blog-platform-frontend:latest \
-                            ./client
-                    """
+                    sh 'docker build -t blog-platform-backend:latest ./blog-platform/server'
+                    sh 'docker build -t blog-platform-frontend:latest ./blog-platform/client'
                     sh 'docker images | grep blog-platform'
                 }
             }
@@ -100,7 +91,9 @@ pipeline {
         stage('Compose Validate') {
             steps {
                 echo 'Validating Docker Compose configuration...'
-                sh 'docker compose config --quiet'
+                dir('blog-platform') {
+                    sh 'docker compose config --quiet'
+                }
                 echo 'Docker Compose configuration is valid.'
             }
         }
@@ -109,41 +102,15 @@ pipeline {
             steps {
                 echo 'Deploying to EC2...'
                 withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: 'ec2-ssh-key',
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USER'
-                    ),
+                    sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
                     file(credentialsId: 'blog-platform-env', variable: 'ENV_FILE')
                 ]) {
                     script {
                         def ec2Host = env.EC2_HOST
                         def appDir  = env.APP_DIR ?: '/opt/blog-platform/blog-platform'
                         def sshOpts = '-o StrictHostKeyChecking=no -o ConnectTimeout=30'
-
-                        sh """
-                            scp \${sshOpts} -i \${SSH_KEY} \
-                                \${ENV_FILE} \
-                                \${SSH_USER}@\${ec2Host}:\${appDir}/.env
-                        """
-
-                        sh """
-                            ssh \${sshOpts} -i \${SSH_KEY} \${SSH_USER}@\${ec2Host} '
-                                set -e
-                                cd \${appDir}
-                                echo "--- Pulling latest code ---"
-                                git pull origin main
-                                echo "--- Building containers ---"
-                                docker compose build --no-cache
-                                echo "--- Restarting containers ---"
-                                docker compose down --remove-orphans
-                                docker compose up -d
-                                echo "--- Pruning old images ---"
-                                docker image prune -f
-                                echo "--- Container status ---"
-                                docker compose ps
-                            '
-                        """
+                        sh "scp ${sshOpts} -i ${SSH_KEY} ${ENV_FILE} ${SSH_USER}@${ec2Host}:${appDir}/.env"
+                        sh "ssh ${sshOpts} -i ${SSH_KEY} ${SSH_USER}@${ec2Host} 'set -e && cd ${appDir} && git pull origin main && docker compose build --no-cache && docker compose down --remove-orphans && docker compose up -d && docker image prune -f && docker compose ps'"
                     }
                 }
             }
@@ -156,25 +123,17 @@ pipeline {
                     def ec2Host = env.EC2_HOST
                     retry(5) {
                         sleep(time: 15, unit: 'SECONDS')
-                        sh "curl -f --silent --max-time 10 http://\${ec2Host}/api/blogs || exit 1"
+                        sh "curl -f --silent --max-time 10 http://${ec2Host}/api/blogs || exit 1"
                     }
                 }
                 echo 'Application is healthy!'
             }
         }
-
     }
 
     post {
-        success {
-            echo "Pipeline succeeded! Build #\${env.BUILD_NUMBER} deployed."
-        }
-        failure {
-            echo "Pipeline failed."
-        }
-        always {
-            echo 'Cleaning up workspace...'
-            cleanWs()
-        }
+        success { echo 'Pipeline succeeded!' }
+        failure { echo 'Pipeline failed.' }
+        always { cleanWs() }
     }
 }
