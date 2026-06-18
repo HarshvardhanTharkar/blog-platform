@@ -805,3 +805,5 @@ Use these bullet points on your resume:
 ---
 
 *Built with ❤️ as a portfolio project demonstrating full-stack engineering and DevOps practices.*
+< ! - -   C I / C D   v e r i f i e d   0 6 / 1 8 / 2 0 2 6   1 1 : 2 1 : 2 4   - - >  
+ 
