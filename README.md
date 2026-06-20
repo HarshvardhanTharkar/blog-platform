@@ -51,15 +51,15 @@ Inkwell is a full-featured blogging platform designed as a portfolio-grade proje
 ## Screenshots
 
 > Screenshots are stored in `docs/screenshots/`. Add your captured images there with the filenames below — GitHub will render them automatically once committed.
+## Screenshots
 
-![Inkwell home page](docs/screenshots/homepage.png)
+![Inkwell home page](./docs/screenshots/homepage.png)
 
-![Jenkins build history](docs/screenshots/jenkins-builds.png)
+![Jenkins build history](./docs/screenshots/jenkins-builds.png)
 
-![Jenkins pipeline stages](docs/screenshots/jenkins-stages.png)
+![Jenkins pipeline stages](./docs/screenshots/jenkins-stages.png)
 
-![EC2 instance running](docs/screenshots/ec2-instance.png)
-
+![EC2 instance running](./docs/screenshots/ec2-instance.png)
 ### Docker Containers — Healthy
 ```
 NAME            IMAGE                    STATUS                   PORTS
