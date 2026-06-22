@@ -10,9 +10,6 @@
 [![Jenkins](https://img.shields.io/badge/Jenkins-LTS-red?logo=jenkins)](https://jenkins.io)
 [![Status](https://img.shields.io/badge/Status-Live-success)]()
 
-**🔗 Live App:** [http://13.50.160.247](http://13.50.160.247)
-**🔧 Jenkins Pipeline:** [http://13.50.160.247:8080/job/inkwell-pipeline/](http://13.50.160.247:8080/job/inkwell-pipeline/)
-
 ---
 
 ## Table of Contents
